@@ -1,0 +1,12 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/icons">
+    <file alias="faulter.png">icons/faulter.png</file>
+    <file alias="faulter.ico">icons/faulter.ico</file>
+    <file alias="faulter_16x16.png">icons/faulter_16x16.png</file>
+    <file alias="faulter_32x32.png">icons/faulter_32x32.png</file>
+    <file alias="faulter_48x48.png">icons/faulter_48x48.png</file>
+    <file alias="faulter_64x64.png">icons/faulter_64x64.png</file>
+    <file alias="faulter_128x128.png">icons/faulter_128x128.png</file>
+    <file alias="faulter_256x256.png">icons/faulter_256x256.png</file>
+</qresource>
+</RCC>

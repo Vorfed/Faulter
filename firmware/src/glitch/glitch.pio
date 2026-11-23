@@ -1,0 +1,76 @@
+; ============================================================================
+; Faulter PIO Glitch Engine
+; ============================================================================
+;
+; Deterministic voltage-glitch timing via RP2040 PIO.
+;
+; At 125 MHz each PIO instruction cycle is exactly 8 ns.
+;
+; Protocol:
+;   1. Pull delay count from TX FIFO (blocks until data available)
+;   2. Count down the delay (delay_count cycles × 8 ns)
+;   3. Set output pin HIGH (glitch ON)
+;   4. Pull pulse width count from TX FIFO
+;   5. Count down the pulse width (pulse_count cycles × 8 ns)
+;   6. Set output pin LOW (glitch OFF)
+;   7. Fire IRQ 0 to signal CPU that glitch is complete
+;   8. Wrap back to start
+;
+; The jmp x-- loop takes 1 cycle per iteration when x > 0, plus 1 cycle
+; for the final fall-through when x == 0.  To get N cycles of delay,
+; load (N - 1) into the counter, so the loop body runs N times total.
+; A count of 0 in the FIFO means 1 cycle of the loop (the fall-through).
+;
+; The "set pins, 1" and "set pins, 0" each take 1 cycle (8 ns).
+; These are accounted for in the C driver's ns→cycle conversion.
+
+.program glitch_engine
+
+.wrap_target
+    pull block          ; Wait for delay cycle count from TX FIFO
+    mov x, osr          ; Load delay counter into X
+
+delay_loop:
+    jmp x-- delay_loop  ; Decrement X; loop while X > 0 (1 cycle per iter)
+
+    set pins, 1         ; Glitch ON  (1 cycle = 8 ns)
+
+    pull block          ; Wait for pulse width cycle count from TX FIFO
+    mov x, osr          ; Load pulse counter into X
+
+pulse_loop:
+    jmp x-- pulse_loop  ; Decrement X; loop while X > 0
+
+    set pins, 0         ; Glitch OFF (1 cycle = 8 ns)
+
+    irq wait 0          ; Signal IRQ 0 and wait for CPU to clear it
+.wrap
+
+% c-sdk {
+/**
+ * @brief Initialize the glitch_engine PIO program.
+ *
+ * @param pio       PIO instance (pio0 or pio1)
+ * @param sm        State machine index (0–3)
+ * @param offset    Instruction memory offset from pio_add_program()
+ * @param pin       GPIO pin number for glitch output
+ */
+static inline void glitch_engine_program_init(PIO pio, uint sm, uint offset,
+                                              uint pin) {
+    /* Configure the set pin */
+    pio_sm_config c = glitch_engine_program_get_default_config(offset);
+    sm_config_set_set_pins(&c, pin, 1);
+
+    /* Initialize pin: output, LOW */
+    pio_gpio_init(pio, pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+    gpio_put(pin, 0);
+
+    /* No clock divider — run at full sys_clk (125 MHz) */
+    sm_config_set_clkdiv(&c, 1.0f);
+
+    /* Initialize and enable the state machine */
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
