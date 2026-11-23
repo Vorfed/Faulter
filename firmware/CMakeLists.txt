@@ -7,6 +7,20 @@ if(NOT DEFINED PICO_SDK_PATH AND NOT DEFINED ENV{PICO_SDK_PATH})
     endif()
 endif()
 
+# Auto-initialize ONLY TinyUSB if missing (avoids pulling ~350MB of unused Pico W wireless libraries)
+if(EXISTS "${PICO_SDK_PATH}/pico_sdk_init.cmake" AND NOT EXISTS "${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/rp2040")
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        message(STATUS "Faulter: TinyUSB not detected in ${PICO_SDK_PATH}/lib/tinyusb.")
+        message(STATUS "Faulter: Initializing ONLY required TinyUSB submodule (skipping unnecessary Pico W wireless libraries)...")
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} submodule update --init lib/tinyusb
+            WORKING_DIRECTORY "${PICO_SDK_PATH}"
+            RESULT_VARIABLE _submod_res
+        )
+    endif()
+endif()
+
 # Pull in Raspberry Pi Pico SDK
 include(pico_sdk_import.cmake)
 

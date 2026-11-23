@@ -104,19 +104,22 @@ Below is a real-time digital oscilloscope trace of a calibrated Faulter glitch p
 
 ---
 
-### Step 1: Clone the Repository (with Submodules)
+### Step 1: Clone the Repository
 
-Faulter bundles the Raspberry Pi Pico SDK as a submodule. **You must clone recursively** so the SDK and its internal TinyUSB library are pulled down:
+Clone the repository and initialize only the required dependencies:
 
 ```bash
-git clone --recurse-submodules https://github.com/Vorfed/Faulter.git
+git clone https://github.com/Vorfed/Faulter.git
 cd Faulter
+./setup.sh
 ```
 
-If you already cloned without `--recurse-submodules`, initialize them manually:
-```bash
-git submodule update --init --recursive
-```
+*(Or manually without the script: `git submodule update --init firmware/lib/pico-sdk && git -C firmware/lib/pico-sdk submodule update --init lib/tinyusb`)*
+
+> [!TIP]
+> **Why `./setup.sh`?**  
+> Standard `git clone --recurse-submodules` downloads over **430 MB** of data because the upstream Raspberry Pi Pico SDK bundles huge wireless/Bluetooth libraries (`mbedtls`, `btstack`, `lwip`, `cyw43-driver`) intended only for the wireless Pico W.  
+> Faulter runs on standard wired RP2040 and only needs **TinyUSB**. Running `./setup.sh` skips all unnecessary wireless stacks, reducing the download size to **~70 MB** and finishing in under 20 seconds.
 
 ---
 
