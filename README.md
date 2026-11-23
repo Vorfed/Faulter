@@ -109,7 +109,7 @@ Below is a real-time digital oscilloscope trace of a calibrated Faulter glitch p
 Faulter bundles the Raspberry Pi Pico SDK as a submodule. **You must clone recursively** so the SDK and its internal TinyUSB library are pulled down:
 
 ```bash
-git clone --recurse-submodules https://github.com/<your-username>/Faulter.git
+git clone --recurse-submodules https://github.com/Vorfed/Faulter.git
 cd Faulter
 ```
 
@@ -208,16 +208,27 @@ ctest --test-dir build --output-on-failure
 
 ---
 
-## ⚠️ Legal & Ethical Notice
+## 🚧 Project Status: Active Development
 
-This software and firmware are developed **strictly for authorized security research, educational exploration, academic evaluation, and hardware hardening assessments**. Performing fault injection attacks against devices without explicit, written permission from the hardware owner is illegal and unethical.
+Faulter is currently under **active, continuous development**.
+
+- **Current Engineering Focus**: The project's immediate development cycle is actively focused on **fine-tuning exact nanosecond timing calibration and hardening the hardware trigger subsystem** (sub-microsecond edge alignment, trigger jitter minimization, and multi-channel synchronization).
+- Features, GUI instrumentation layouts, and wire protocol packet definitions may undergo rapid iteration and breaking updates as physical test benches evolve.
+- Future enhancements include dedicated external edge trigger qualification, clock glitching support, and automated trace capture integration.
+- Contributions, issue reports, hardware test vectors, and pull requests are warmly encouraged!
 
 ---
 
-## 🚧 Project Status: Active Development
+## 🙏 Acknowledgments & Thanks
 
-Faulter is currently under **active, continuous development**. 
+Special thanks to:
+- The open-source hardware security, reverse engineering, and fault-injection research community.
+- The original **PicoGlitcher** project for foundational architectural inspiration and demonstrating the power of the RP2040 for accessible security research.
+- The **Raspberry Pi Foundation** for the RP2040 microcontroller and its extraordinary Programmable I/O (PIO) architecture.
+- Everyone testing, reporting edge cases, and contributing to the security hardening of embedded systems!
 
-- Features, GUI layouts, and wire protocol packet definitions may undergo rapid iteration and breaking updates.
-- Future roadmaps include clock glitching support, external trigger synchronization, and automated logic analyzer trace decoding.
-- Contributions, issue reports, hardware test vectors, and pull requests are warmly encouraged!
+---
+
+<p align="center">
+  <strong>Faulter Official Repository:</strong> <a href="https://github.com/Vorfed/Faulter">https://github.com/Vorfed/Faulter</a>
+</p>
