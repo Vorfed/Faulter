@@ -219,16 +219,6 @@ Faulter is currently under **active, continuous development**.
 
 ---
 
-## 🙏 Acknowledgments & Thanks
-
-Special thanks to:
-- The open-source hardware security, reverse engineering, and fault-injection research community.
-- The original **PicoGlitcher** project for foundational architectural inspiration and demonstrating the power of the RP2040 for accessible security research.
-- The **Raspberry Pi Foundation** for the RP2040 microcontroller and its extraordinary Programmable I/O (PIO) architecture.
-- Everyone testing, reporting edge cases, and contributing to the security hardening of embedded systems!
-
----
-
 <p align="center">
   <strong>Faulter Official Repository:</strong> <a href="https://github.com/Vorfed/Faulter">https://github.com/Vorfed/Faulter</a>
 </p>
