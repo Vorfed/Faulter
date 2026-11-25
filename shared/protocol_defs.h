@@ -169,7 +169,7 @@ extern "C" {
  * Parameter Validation Ranges
  * ====================================================================== */
 
-#define MIN_PULSE_NS              8     /* 1 PIO cycle at 125 MHz */
+#define MIN_PULSE_NS              4     /* 1 PIO cycle at 250 MHz (or 8 ns at 125 MHz) */
 #define MAX_GPIO_PIN              28
 #define MAX_PWR_CYCLE_OFF_MS      10000
 #define MAX_REPEAT_COUNT          65535

@@ -201,6 +201,63 @@ int main(int argc, char* argv[]) {
     p5.save(QDir::tempPath() + "/faulter_snapshot_sweep.png");
     std::cout << "[GUI TEST] Snapshot 5: Brute sweep snapshot captured.\n";
 
+    // ── 11. Test Disconnected Attack Setup -> Reconnect -> Arm Preparation ──
+    std::cout << "\n[GUI TEST 11] Testing Offline Attack Selection -> Reconnect -> Arm Glitch Readiness...\n";
+    // Disconnect device to simulate offline launch
+    window.onConnectClicked(); // disconnects
+    app.processEvents();
+    assert(!window.protocol()->isConnected());
+
+    auto* armBtn = window.configPanel()->findChild<QPushButton*>("armButton");
+    assert(armBtn != nullptr);
+    assert(!armBtn->isEnabled());
+    assert(armBtn->text() == "ARM GLITCH");
+    std::cout << "[GUI TEST] Verified ARM GLITCH is disabled while offline.\n";
+
+    // User selects attack mode (2D Parameter Sweep) while disconnected
+    window.config()->setSweepEnabled(true);
+    window.config()->setSweepWidthStartNs(8);
+    window.config()->setSweepWidthEndNs(40);
+    app.processEvents();
+
+    assert(!armBtn->isEnabled());
+    std::cout << "[GUI TEST] Offline attack mode configured.\n";
+
+    // Now user connects to Raspberry Pi Pico (or simulator)
+    window.onConnectClicked(); // connects
+    app.processEvents();
+    assert(window.protocol()->isConnected());
+
+    // CRITICAL: ARM GLITCH must now be ENABLED and ready to prep!
+    assert(armBtn->isEnabled());
+    assert(armBtn->text() == "ARM GLITCH");
+    assert(fireBtn->isEnabled());
+    assert(fireBtn->text() == "START BRUTE SWEEP");
+    std::cout << "[GUI TEST] Verified connecting immediately enables ARM GLITCH & START BRUTE SWEEP ✔\n";
+
+    // User clicks ARM GLITCH
+    armBtn->click();
+    app.processEvents();
+    assert(armBtn->text() == "✔ ARMED (Disarm)");
+    std::cout << "[GUI TEST] Verified arming succeeded and button transitioned to ARMED ✔\n";
+
+    // Disarm
+    armBtn->click();
+    app.processEvents();
+    assert(armBtn->text() == "ARM GLITCH");
+    assert(armBtn->isEnabled());
+    std::cout << "[GUI TEST] Disarmed and returned to ready state ✔\n";
+
+    // Switch to Continuous Infinite Burst mode while connected
+    window.config()->setSweepEnabled(false);
+    window.config()->setBurstInfinite(true);
+    app.processEvents();
+
+    assert(armBtn->isEnabled());
+    assert(armBtn->text() == "ARM GLITCH");
+    assert(fireBtn->text() == "FIRE BURST");
+    std::cout << "[GUI TEST] Switched to burst mode: ARM GLITCH remains ready ✔\n";
+
     std::cout << "\n==================================================\n";
     std::cout << "  ALL GUI COMPONENT TESTS PASSED WITH 100% SUCCESS!\n";
     std::cout << "==================================================\n";

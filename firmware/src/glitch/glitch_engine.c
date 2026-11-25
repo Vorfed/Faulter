@@ -12,6 +12,7 @@
 #include "hardware/gpio.h"
 #include "hardware/timer.h"
 #include "hardware/irq.h"
+#include "hardware/clocks.h"
 #include "pico/stdlib.h"
 
 #include <string.h>
@@ -25,6 +26,7 @@ static uint  s_glitch_pin = 0;
 static uint  s_monitor_pin = 0;
 static bool  s_monitor_en = false;
 static bool  s_initialized = false;
+static uint32_t s_pio_cycle_ns = PIO_CYCLE_NS;
 
 /** Volatile abort flag checked between burst repetitions. */
 static volatile bool s_abort_requested = false;
@@ -42,35 +44,62 @@ void glitch_engine_set_pulse_callback(glitch_pulse_fn fn) {
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
 /**
- * @brief Convert nanoseconds to PIO cycle counts.
+ * @brief Convert pulse width nanoseconds to PIO cycle counts.
  *
- * The PIO jmp-x-- loop takes 1 cycle per iteration.  A count of 0 still
- * produces one loop iteration (the fall-through), so the minimum is 1 cycle.
- * We subtract 1 because the loop executes (count + 1) times total
- * (count iterations + 1 fall-through).
+ * In glitch.pio:
+ *   set pins, 1
+ * pulse_loop:
+ *   jmp y-- pulse_loop
+ *   set pins, 0
  *
- * If ns == 0 we return 0 (the PIO will do 1 cycle = 8 ns, which is the
- * minimum achievable).
+ * For y = 0: 1 cycle (minimum achievable).
+ * For y = N: (N + 1) cycles.
+ * Therefore: cycles = pulse_ns / s_pio_cycle_ns.
+ * counter = cycles - 1.
  */
-static inline uint32_t ns_to_cycles(uint32_t ns) {
+static inline uint32_t pulse_ns_to_cycles(uint32_t ns) {
     if (ns == 0) {
         return 0;
     }
-    uint32_t cycles = ns / PIO_CYCLE_NS;
+    uint32_t cycles = ns / s_pio_cycle_ns;
     if (cycles == 0) {
         cycles = 1;
     }
-    /* Subtract 1 because jmp x-- executes (x+1) times */
     return cycles - 1;
 }
 
 /**
- * @brief Convert PIO cycle counts back to nanoseconds for telemetry.
+ * @brief Convert delay nanoseconds to PIO cycle counts.
  *
- * Inverse of ns_to_cycles: the loop ran (count + 1) iterations.
+ * In glitch.pio:
+ *   jmp !x skip_delay
+ * delay_loop:
+ *   jmp x-- delay_loop
+ * skip_delay:
+ *
+ * For x = 0: jmp !x takes 1 cycle.
+ * For x > 0: takes 1 cycle (jmp !x not taken) + (x + 1) cycles of delay_loop = (x + 2) cycles.
  */
-static inline uint32_t cycles_to_ns(uint32_t count) {
-    return (count + 1) * PIO_CYCLE_NS;
+static inline uint32_t delay_ns_to_cycles(uint32_t ns) {
+    if (ns == 0) {
+        return 0;
+    }
+    uint32_t cycles = ns / s_pio_cycle_ns;
+    if (cycles <= 2) {
+        return 0;
+    }
+    return cycles - 2;
+}
+
+static inline uint32_t pulse_cycles_to_ns(uint32_t count) {
+    return (count + 1) * s_pio_cycle_ns;
+}
+
+static inline uint32_t delay_cycles_to_ns(uint32_t count) {
+    if (count == 0) {
+        return s_pio_cycle_ns;
+    }
+    return (count + 2) * s_pio_cycle_ns;
 }
 
 /* ── Public API ──────────────────────────────────────────────────────── */
@@ -78,6 +107,14 @@ static inline uint32_t cycles_to_ns(uint32_t count) {
 int glitch_engine_init(uint32_t glitch_pin, uint32_t monitor_pin, bool monitor_en) {
     s_pio = GLITCH_PIO_INSTANCE;
     s_sm  = GLITCH_SM_INDEX;
+
+    /* Detect system clock speed and adapt PIO cycle duration */
+    uint32_t clk_hz = clock_get_hz(clk_sys);
+    if (clk_hz >= 240000000u) {
+        s_pio_cycle_ns = 4u; /* 250 MHz -> 4 ns resolution */
+    } else {
+        s_pio_cycle_ns = 8u; /* 125 MHz -> 8 ns resolution */
+    }
 
     /* Load PIO program */
     if (!pio_can_add_program(s_pio, &glitch_engine_program)) {
@@ -89,13 +126,15 @@ int glitch_engine_init(uint32_t glitch_pin, uint32_t monitor_pin, bool monitor_e
     glitch_engine_program_init(s_pio, s_sm, s_offset, glitch_pin);
     s_glitch_pin = glitch_pin;
 
-    /* Configure monitor pin as plain GPIO output */
+    /* Configure monitor pin as plain GPIO output with FAST slew & 12mA drive */
     s_monitor_pin = monitor_pin;
     s_monitor_en  = monitor_en;
     if (monitor_en) {
         gpio_init(monitor_pin);
         gpio_set_dir(monitor_pin, GPIO_OUT);
         gpio_put(monitor_pin, 0);
+        gpio_set_slew_rate(monitor_pin, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(monitor_pin, GPIO_DRIVE_STRENGTH_12MA);
     }
 
     s_abort_requested = false;
@@ -109,8 +148,8 @@ int glitch_engine_fire(uint32_t delay_ns, uint32_t pulse_ns,
         return ERR_HARDWARE_FAULT;
     }
 
-    uint32_t delay_count = ns_to_cycles(delay_ns);
-    uint32_t pulse_count = ns_to_cycles(pulse_ns);
+    uint32_t delay_count = delay_ns_to_cycles(delay_ns);
+    uint32_t pulse_count = pulse_ns_to_cycles(pulse_ns);
 
     /* Clear any stale IRQ flag */
     pio_interrupt_clear(s_pio, 0);
@@ -145,8 +184,8 @@ int glitch_engine_fire(uint32_t delay_ns, uint32_t pulse_ns,
     /* Fill result with computed timing (PIO is deterministic, so we know
      * the exact cycle counts that were executed). */
     if (result) {
-        result->actual_delay_ns = cycles_to_ns(delay_count);
-        result->actual_pulse_ns = cycles_to_ns(pulse_count);
+        result->actual_delay_ns = delay_cycles_to_ns(delay_count);
+        result->actual_pulse_ns = pulse_cycles_to_ns(pulse_count);
         result->aborted = false;
     }
 
@@ -273,6 +312,8 @@ int glitch_engine_set_pins(uint32_t glitch_pin, uint32_t monitor_pin, bool monit
         gpio_init(monitor_pin);
         gpio_set_dir(monitor_pin, GPIO_OUT);
         gpio_put(monitor_pin, 0);
+        gpio_set_slew_rate(monitor_pin, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(monitor_pin, GPIO_DRIVE_STRENGTH_12MA);
     }
 
     return ERR_NONE;

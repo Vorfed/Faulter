@@ -153,11 +153,11 @@ bool test_param_validation() {
     std::cout << "[TEST] Parameter validation rules... ";
 
     // Pulse width
-    auto res = faulter::ParamValidator::validatePulse(8);
-    TEST_ASSERT(res.isValid, "8 ns pulse is valid (minimum 1 PIO cycle)");
+    auto res = faulter::ParamValidator::validatePulse(4);
+    TEST_ASSERT(res.isValid, "4 ns pulse is valid (minimum 1 PIO cycle @ 250 MHz)");
 
-    res = faulter::ParamValidator::validatePulse(7);
-    TEST_ASSERT(!res.isValid, "7 ns pulse must be rejected (< 8 ns)");
+    res = faulter::ParamValidator::validatePulse(3);
+    TEST_ASSERT(!res.isValid, "3 ns pulse must be rejected (< 4 ns)");
 
     res = faulter::ParamValidator::validatePulse(100);
     TEST_ASSERT(res.isValid, "100 ns pulse is valid");

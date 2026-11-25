@@ -115,7 +115,7 @@ void MainWindow::setupUi() {
     topLayout->addStretch(1);
 
     // Quick Hardware Capabilities Tag
-    auto* hwTag = new QLabel("Core: RP2040 @ 125 MHz  |  PIO Timing: 8 ns", topHeaderBar);
+    auto* hwTag = new QLabel("Core: RP2040 @ 250 MHz  |  PIO Timing: 4 ns", topHeaderBar);
     hwTag->setStyleSheet("color: #8b949e; font-weight: 600; font-size: 11px; background: #21262d; border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px;");
     topLayout->addWidget(hwTag);
 
@@ -341,6 +341,9 @@ void MainWindow::onNakReceived(uint8_t cmdType, uint8_t errorCode) {
 
     statusBar()->showMessage(errStr, 5000);
     m_telemetryConsole->logError(errStr);
+    if (cmdType == PKT_CMD_ARM || cmdType == PKT_CMD_FIRE) {
+        m_configPanel->setDeviceState(m_currentState);
+    }
     // Note: Do NOT open a modal QMessageBox here, as modal dialogs block the GUI
     // and steal focus, preventing immediate user interaction (requiring double-clicks).
 }
@@ -441,6 +444,7 @@ void MainWindow::onArmRequested() {
         return;
     }
     if (!m_protocol->isConnected()) {
+        m_configPanel->setConnected(false);
         QMessageBox::information(this, "Connect Required",
             "Please select a target and click 'Connect' (or choose the Virtual Pico Simulator) before arming.");
         return;
@@ -523,7 +527,7 @@ void MainWindow::onSweepStep() {
 
     m_sweepStepCount++;
 
-    // Safety: ensure pulse width is at least MIN_PULSE_NS (8 ns) for hardware
+    // Safety: ensure pulse width is at least MIN_PULSE_NS (4 ns) for hardware
     uint32_t pulseWidth = std::max<uint32_t>(MIN_PULSE_NS, m_currentSweepWidth);
 
     // 1. Program current coordinate to device / simulator

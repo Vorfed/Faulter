@@ -16,11 +16,11 @@ extern "C" {
  * System Clock
  * ====================================================================== */
 
-/** System clock frequency in Hz (RP2040 default). */
-#define SYS_CLOCK_HZ           125000000u
+/** System clock frequency in Hz (RP2040 250 MHz high-performance mode). */
+#define SYS_CLOCK_HZ           250000000u
 
-/** PIO cycle time in nanoseconds at 125 MHz. */
-#define PIO_CYCLE_NS           8u
+/** PIO cycle time in nanoseconds at 250 MHz. */
+#define PIO_CYCLE_NS           4u
 
 /* ======================================================================
  * PIO Configuration

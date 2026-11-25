@@ -57,6 +57,9 @@ target_link_libraries(faulter_fw
     hardware_timer
 )
 
+# Maximum performance optimization
+target_compile_options(faulter_fw PRIVATE -O3)
+
 # Enable USB CDC serial, disable UART to prevent output interference
 pico_enable_stdio_usb(faulter_fw 1)
 pico_enable_stdio_uart(faulter_fw 0)

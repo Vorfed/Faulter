@@ -1,28 +1,15 @@
 ; ============================================================================
-; Faulter PIO Glitch Engine
+; Faulter PIO Glitch Engine - Ultra-High-Performance Single-Cycle Architecture
 ; ============================================================================
 ;
-; Deterministic voltage-glitch timing via RP2040 PIO.
+; True single-cycle hardware resolution via RP2040 PIO:
+;   - At 250 MHz each PIO cycle is exactly 4.00 ns.
+;   - Dynamic pulse widths: Y = 0 produces exactly 1 cycle (4.00 ns).
+;                           Y = 1 produces exactly 2 cycles (8.00 ns).
+;                           Y = N produces exactly (N + 1) cycles.
 ;
-; At 125 MHz each PIO instruction cycle is exactly 8 ns.
-;
-; Protocol:
-;   1. Pull delay count from TX FIFO (blocks until data available)
-;   2. Count down the delay (delay_count cycles × 8 ns)
-;   3. Set output pin HIGH (glitch ON)
-;   4. Pull pulse width count from TX FIFO
-;   5. Count down the pulse width (pulse_count cycles × 8 ns)
-;   6. Set output pin LOW (glitch OFF)
-;   7. Fire IRQ 0 to signal CPU that glitch is complete
-;   8. Wrap back to start
-;
-; The jmp x-- loop takes 1 cycle per iteration when x > 0, plus 1 cycle
-; for the final fall-through when x == 0.  To get N cycles of delay,
-; load (N - 1) into the counter, so the loop body runs N times total.
-; A count of 0 in the FIFO means 1 cycle of the loop (the fall-through).
-;
-; The "set pins, 1" and "set pins, 0" each take 1 cycle (8 ns).
-; These are accounted for in the C driver's ns→cycle conversion.
+; Both delay and pulse width counts are pre-loaded BEFORE the glitch pin is
+; asserted, completely eliminating CPU FIFO stall latency.
 
 .program glitch_engine
 
@@ -30,23 +17,44 @@
     pull block          ; Wait for delay cycle count from TX FIFO
     mov x, osr          ; Load delay counter into X
 
+    pull block          ; Wait for pulse width cycle count from TX FIFO
+    mov y, osr          ; Load pulse width counter into Y
+
+    jmp !x skip_delay   ; If delay is 0, skip delay loop immediately
 delay_loop:
     jmp x-- delay_loop  ; Decrement X; loop while X > 0 (1 cycle per iter)
+skip_delay:
 
-    set pins, 1         ; Glitch ON  (1 cycle = 8 ns)
+    ; Pulse Generation Logic:
+    ; Y is cycle count - 1 (0 -> 1 cycle, 1 -> 2 cycles, N -> N+1 cycles)
+    jmp !y pulse_1      ; Y == 0: branch to true 1-cycle single-instruction pulse
+    jmp y-- check_2     ; Y > 0: decrement Y and check if it was 1
+check_2:
+    jmp !y pulse_2      ; Y was 1 (now 0): branch to 2-cycle pulse
 
-    pull block          ; Wait for pulse width cycle count from TX FIFO
-    mov x, osr          ; Load pulse counter into X
-
+    ; For Y >= 2 (3 or more cycles):
+    set pins, 1         ; Pin goes HIGH
 pulse_loop:
-    jmp x-- pulse_loop  ; Decrement X; loop while X > 0
+    jmp y-- pulse_loop  ; Loops for remaining cycles while pin is HIGH
+    set pins, 0         ; Pin returns to LOW
+    jmp done
 
-    set pins, 0         ; Glitch OFF (1 cycle = 8 ns)
+pulse_1:
+    set pins, 1         ; Cycle 1: Pin goes HIGH
+    set pins, 0         ; Cycle 2: Pin goes LOW (duration HIGH: EXACTLY 1 cycle!)
+    jmp done
 
-    irq wait 0          ; Signal IRQ 0 and wait for CPU to clear it
+pulse_2:
+    set pins, 1 [1]     ; Cycle 1: Pin goes HIGH, held for 1 extra cycle = 2 cycles
+    set pins, 0         ; Cycle 3: Pin goes LOW (duration HIGH: EXACTLY 2 cycles!)
+
+done:
+    irq wait 0          ; Signal IRQ 0 and wait for CPU to acknowledge/clear it
 .wrap
 
 % c-sdk {
+#include "hardware/gpio.h"
+
 /**
  * @brief Initialize the glitch_engine PIO program.
  *
@@ -66,7 +74,15 @@ static inline void glitch_engine_program_init(PIO pio, uint sm, uint offset,
     pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
     gpio_put(pin, 0);
 
-    /* No clock divider — run at full sys_clk (125 MHz) */
+    /* MAXIMUM SLEW AND DRIVE PERFORMANCE:
+     * Switch GPIO to FAST slew rate and 12 mA drive strength.
+     * Default RP2040 4 mA slow slew rate produces ~7-10 ns rise times,
+     * rounding off narrow nanosecond pulses and degrading amplitude.
+     * 12 mA fast slew delivers < 1 ns edge transitions and full 3.3V amplitude. */
+    gpio_set_slew_rate(pin, GPIO_SLEW_RATE_FAST);
+    gpio_set_drive_strength(pin, GPIO_DRIVE_STRENGTH_12MA);
+
+    /* No clock divider — run at full sys_clk (250 MHz) */
     sm_config_set_clkdiv(&c, 1.0f);
 
     /* Initialize and enable the state machine */

@@ -293,7 +293,7 @@ void ConfigPanel::setupUi() {
     burstLayout->addWidget(pulseLbl, 1, 0);
 
     m_pulseSpin = new QSpinBox(burstGridWidget);
-    m_pulseSpin->setRange(8, 1000000);
+    m_pulseSpin->setRange(MIN_PULSE_NS, 1000000);
     m_pulseSpin->setValue(100);
     burstLayout->addWidget(m_pulseSpin, 1, 1);
 
@@ -526,7 +526,9 @@ void ConfigPanel::setupUi() {
 
     connect(m_armBtn, &QPushButton::clicked, this, [this]() {
         if (!m_isSweeping && m_deviceState != STATE_FIRING) {
-            m_armBtn->setEnabled(false); // prevent rapid duplicate clicks
+            if (m_connected) {
+                m_armBtn->setEnabled(false); // prevent rapid duplicate clicks
+            }
             emit armRequested();
         }
     });
@@ -682,7 +684,7 @@ void ConfigPanel::onValidateInputs() {
     }
 
     m_errorLabel->setVisible(false);
-    m_armBtn->setEnabled(true);
+    updateControlStates();
 }
 
 void ConfigPanel::setSweepStatus(const QString& status) {
@@ -714,6 +716,9 @@ void ConfigPanel::onFireButtonClicked() {
         emit abortRequested();
     } else if (m_deviceState == STATE_ARMED) {
         m_fireBtn->setEnabled(false); // disable immediately to prevent multi-clicking!
+        emit fireRequested();
+    } else if (m_deviceState == STATE_IDLE && m_connected && m_sweepEnableCheck->isChecked()) {
+        m_fireBtn->setEnabled(false);
         emit fireRequested();
     }
 }
@@ -818,52 +823,71 @@ void ConfigPanel::updateControlStates() {
     m_sweepStepGapSpin->setEnabled(sweepInputsEditable);
     m_sweepStepGapUnitCombo->setEnabled(sweepInputsEditable);
 
-    // PERFORMANCE GUARD: Only rewrite expensive setStyleSheet() calls when the
-    // device state has actually *transitioned*.
-    if (m_deviceState == m_lastVisualState) {
-        return;
+    // Validate current input values
+    bool isValid = true;
+    if (m_pulseSpin && m_pulseUnitCombo) {
+        ValidationResult res = ParamValidator::validatePulse(static_cast<uint32_t>(getNsValue(m_pulseSpin, m_pulseUnitCombo)));
+        isValid = res.isValid;
     }
-    m_lastVisualState = m_deviceState;
 
     // ARM button toggles between ARM and DISARM when already armed:
     if (isArmed) {
         m_armBtn->setText("✔ ARMED (Disarm)");
         m_armBtn->setEnabled(true);
-        m_armBtn->setStyleSheet("QPushButton#armButton { background-color: #9e6a03; border: 1px solid #d29922; color: #ffffff; font-weight: 700; } QPushButton#armButton:hover { background-color: #bb8009; }");
+        if (m_lastVisualState != STATE_ARMED) {
+            m_armBtn->setStyleSheet("QPushButton#armButton { background-color: #9e6a03; border: 1px solid #d29922; color: #ffffff; font-weight: 700; } QPushButton#armButton:hover { background-color: #bb8009; }");
+        }
     } else {
         m_armBtn->setText("ARM GLITCH");
-        m_armBtn->setEnabled(isIdle && m_connected);
-        m_armBtn->setStyleSheet("");
+        m_armBtn->setEnabled(isIdle && m_connected && isValid);
+        if (m_lastVisualState == STATE_ARMED || m_lastVisualState == 0xFF) {
+            m_armBtn->setStyleSheet("");
+        }
     }
 
     // MAIN ACTION BUTTON transforms into a high-visibility, clickable STOP button while firing!
     if (isFiring) {
         m_fireBtn->setText(isSweep ? "🛑 STOP SWEEP" : "🛑 STOP BURST");
         m_fireBtn->setEnabled(true);
-        m_fireBtn->setStyleSheet(
-            "QPushButton#fireButton {"
-            "  background-color: #b62324;"
-            "  border: 1px solid #da3633;"
-            "  color: #ffffff;"
-            "  font-size: 13px;"
-            "  font-weight: 700;"
-            "  min-height: 34px;"
-            "  border-radius: 6px;"
-            "}"
-            "QPushButton#fireButton:hover {"
-            "  background-color: #cf222e;"
-            "  color: #ffffff;"
-            "}"
-        );
+        if (m_lastVisualState != STATE_FIRING) {
+            m_fireBtn->setStyleSheet(
+                "QPushButton#fireButton {"
+                "  background-color: #b62324;"
+                "  border: 1px solid #da3633;"
+                "  color: #ffffff;"
+                "  font-size: 13px;"
+                "  font-weight: 700;"
+                "  min-height: 34px;"
+                "  border-radius: 6px;"
+                "}"
+                "QPushButton#fireButton:hover {"
+                "  background-color: #cf222e;"
+                "  color: #ffffff;"
+                "}"
+            );
+        }
     } else if (isArmed) {
         m_fireBtn->setText(isSweep ? "START BRUTE SWEEP" : "FIRE BURST");
         m_fireBtn->setEnabled(m_connected);
-        m_fireBtn->setStyleSheet("");
+        if (m_lastVisualState == STATE_FIRING || m_lastVisualState == 0xFF) {
+            m_fireBtn->setStyleSheet("");
+        }
+    } else if (isIdle && isSweep) {
+        // When sweep attack mode is selected and connected, allow starting sweep directly!
+        m_fireBtn->setText("START BRUTE SWEEP");
+        m_fireBtn->setEnabled(m_connected);
+        if (m_lastVisualState == STATE_FIRING || m_lastVisualState == 0xFF) {
+            m_fireBtn->setStyleSheet("");
+        }
     } else {
         m_fireBtn->setText(isSweep ? "START BRUTE SWEEP" : "FIRE BURST");
         m_fireBtn->setEnabled(false);
-        m_fireBtn->setStyleSheet("");
+        if (m_lastVisualState == STATE_FIRING || m_lastVisualState == 0xFF) {
+            m_fireBtn->setStyleSheet("");
+        }
     }
+
+    m_lastVisualState = m_deviceState;
 
     // Secondary emergency STOP / ABORT button is also always ready:
     m_abortBtn->setEnabled(m_connected && (isArmed || isFiring));

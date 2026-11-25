@@ -79,6 +79,17 @@ static void main_poll_usb(void) {
 /* ── Main Loop ───────────────────────────────────────────────────────── */
 
 int main(void) {
+    /* Set core voltage to 1.25V for rock-solid 250 MHz high-performance operation */
+    vreg_set_voltage(VREG_VOLTAGE_1_25);
+    sleep_ms(10);
+
+    /* Overclock RP2040 system clock to 250 MHz (4 ns hardware timing resolution) */
+    bool clk_ok = set_sys_clock_khz(250000, false);
+    if (!clk_ok) {
+        /* Fallback to 125 MHz default if 250 MHz PLL configuration fails */
+        set_sys_clock_khz(125000, false);
+    }
+
     /* Initialize default stdio (USB CDC enabled) */
     stdio_init_all();
 
